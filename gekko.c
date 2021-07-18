@@ -317,6 +317,38 @@ static int gko_read_grip(const char *name, GRIP *grip)
     return GEKKO_OK;
 }
 /**********************************************************************************************************************
+    description:    Print general help
+    arguments:      -
+    return:         -
+**********************************************************************************************************************/
+static void gko_help_main(void)
+{
+    printf("Usage: gekko command [options]\n\n");
+
+    printf("Commands:\n");
+    printf("\tcamo\t\tspecify file or directory to ignore\n");
+    printf("\tgrip\t\tadd a grip to remote host\n");
+    printf("\trun\t\tstart synchronization\n\n");
+
+    printf("Common usage:\n");
+    printf("- Add path to ignore:\n");
+    printf("\tgekko camo no_upload.txt\n");
+    printf("- Remove path to ignore:\n");
+    printf("\tgekko camo -r no_upload.txt\n\n");
+
+    printf("- List all grips:\n");
+    printf("\tgekko grip\n");
+    printf("- Add / Modify a grip:\n");
+    printf("\tgekko grip myserver sftp://catboy@myserver.com:22\n");
+    printf("- Remove a grip:\n");
+    printf("\tgekko grip -r myserver\n\n");
+
+    printf("- Start synchronization:\n");
+    printf("\tgekko run myserver /home/catboy/upload/ [-p password] [-k keyfile]\n");
+    printf("- Check changes to apply:\n");
+    printf("\tgekko run -s myserver [-p password] [-k keyfile]\n\n");
+}
+/**********************************************************************************************************************
     description:    Entry function of Gekko
     arguments:      argc:   Count of command line arguments
                     argv:   Values of command line arguments
