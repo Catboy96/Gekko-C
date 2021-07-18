@@ -35,17 +35,34 @@
 /**********************************************************************************************************************
     global variables
 **********************************************************************************************************************/
-static int          sock            = -1;
-char               *grips_path      = NULL;
-LIBSSH2_SESSION    *session         = NULL;
-LIBSSH2_CHANNEL    *channel         = NULL;
+static int                  sock        = -1;
+static char                *grips_dir   = NULL;
+static LIBSSH2_SESSION     *session     = NULL;
+static LIBSSH2_CHANNEL     *channel     = NULL;
 /**********************************************************************************************************************
     useful macros
 **********************************************************************************************************************/
-#define gko_error_return(prompt)                \
-if (ret != GEKKO_OK) {                          \
-    fprintf(stderr, prompt " (%d).\n", ret);    \
-    return GEKKO_ERROR;                         \
+#define gko_error_return(prompt)                    \
+    if (ret != GEKKO_OK) {                          \
+        fprintf(stderr, prompt " (%d).\n", ret);    \
+        return GEKKO_ERROR;                         \
+    }
+/**********************************************************************************************************************
+    description:    allocate memory and clear
+    arguments:      size:   allocate size
+    return:         pointer to allocated memory
+**********************************************************************************************************************/
+static void *zalloc(size_t size)
+{
+    void *memory = NULL;
+
+    if (!size) return NULL;
+
+    memory = malloc(size);
+    if (!memory) return NULL;
+    memset(memory, 0, size);
+
+    return memory;
 }
 /**********************************************************************************************************************
     description:    windows specific strndup implementation
@@ -59,8 +76,7 @@ static char *strndup(const char *str, size_t chars)
     char   *buffer;
     int     n;
 
-    buffer = (char *)malloc(chars + 1);
-    memset(buffer, 0, chars + 1);
+    buffer = (char *)zalloc(chars + 1);
     if (buffer) {
         for (n = 0; ((n < chars) && (str[n] != 0)); n++) {
             buffer[n] = str[n];
@@ -122,6 +138,8 @@ static int gko_instance_create(GRIP *grip)
 #ifdef GEKKO_DEBUG
     int                 i;
 #endif
+
+    if (!grip) return GEKKO_ERROR;
 
     ret = libssh2_init(0);
     gko_error_return("libssh2 initialization failed");
@@ -214,6 +232,7 @@ static int gko_read_config(const char *path)
     char           *value           = NULL;
     char           *temp            = NULL;
     FILE           *file            = NULL;
+    bool            error           = false;
     size_t          file_length     = 0;
     size_t          file_read       = 0;
     int             count           = 0;
@@ -233,33 +252,32 @@ static int gko_read_config(const char *path)
     file_length = ftell(file);
     fseek(file, 0, SEEK_SET);
 
-    json = (char *)malloc(file_length);
-    memset(json, 0, file_length);
+    json = (char *)zalloc(file_length);
     if (!json) {
         fprintf(stderr, "Insufficient memory.\n");
-        return GEKKO_ERROR;
+        error = true;
+        goto __error_json_malloc;
     }
 
     file_read = fread(json, 1, file_length, file);
-    fclose(file);
 
     if (file_read != file_length) {
         fprintf(stderr, "Failed to parse JSON %s (%d).\n", path, count);
-        free(json);
-        return GEKKO_ERROR;
+        error = true;
+        goto __error_file_read;
     }
 
     jsmn_init(&p);
     count = jsmn_parse(&p, json, strlen(json), t, sizeof(t) / sizeof(t[0]));
     if (count < 0) {
-        fprintf(stderr, "Failed to parse JSON %s (%d).\n", path, count);
-        return GEKKO_ERROR;
+        error = true;
+        goto __error_file_read;
     }
 
     if (count < 1 || t[0].type != JSMN_OBJECT) {
         fprintf(stderr, "Invalid json file %s (%d).\n", path, count);
-        free(json);
-        return GEKKO_ERROR;
+        error = true;
+        goto __error_file_read;
     }
 
     for (i = 1; i < count; i++) {
@@ -281,18 +299,19 @@ static int gko_read_config(const char *path)
 #endif
             }
 
-            grips_path = (char *)malloc(PATH_MAX);
-            if (!grips_path) {
+            grips_dir = (char *)zalloc(PATH_MAX);
+            if (!grips_dir) {
                 fprintf(stderr, "Insufficient memory.\n");
-                return GEKKO_ERROR;
+                error = true;
+                goto __error_grips_dir_malloc;
             }
 
             if (value[0] == '~') {
 #ifdef WINDOWS
-                snprintf(grips_path, PATH_MAX, "%s%s%s", getenv("HOMEDRIVE"),
+                snprintf(grips_dir, PATH_MAX, "%s%s%s", getenv("HOMEDRIVE"),
                          getenv("HOMEPATH"), &value[1]);
 #else
-                snprintf(grips_path, PATH_MAX, "%s%s", getenv("HOME"), &value[1]);
+                snprintf(grips_dir, PATH_MAX, "%s%s", getenv("HOME"), &value[1]);
 #endif
             }
 
@@ -300,21 +319,29 @@ static int gko_read_config(const char *path)
         }
     }
 
+    if (!grips_dir) {
+        fprintf(stderr, "Grips directory is not specified.\n");
+        error = true;
+        goto __error_grips_dir_malloc;
+    }
+
+    if (!gko_dir_exists(grips_dir)) {
+        free(grips_dir);
+        grips_dir = NULL;
+        fprintf(stderr, "Grips directory does not exist.\n");
+        error = true;
+    }
+
+__error_grips_dir_malloc:
     free(value);
+
+__error_file_read:
     free(json);
 
-    if (!grips_path) {
-        fprintf(stderr, "Grips directory is not specified.\n");
-        return GEKKO_ERROR;
-    }
+__error_json_malloc:
+    fclose(file);
 
-    if (!gko_dir_exists(grips_path)) {
-        free(grips_path);
-        fprintf(stderr, "Grips directory does not exist.\n");
-        return GEKKO_ERROR;
-    }
-
-    return GEKKO_OK;
+    return (error) ? GEKKO_ERROR : GEKKO_OK;
 }
 /**********************************************************************************************************************
     description:    Read configuration file
@@ -324,9 +351,122 @@ static int gko_read_config(const char *path)
 **********************************************************************************************************************/
 static int gko_read_grip(const char *name, GRIP *grip)
 {
-    if (!name) return GEKKO_ERROR;
+    DIR            *dir                 = NULL;
+    struct dirent  *ent                 = NULL;
+    char           *grip_path           = NULL;
+    char            filename[NAME_MAX]  = {0};
+    bool            error               = false;
+    char           *json                = NULL;
+    char           *value               = NULL;
+    FILE           *file                = NULL;
+    size_t          file_length         = 0;
+    size_t          file_read           = 0;
+    int             count               = 0;
+    int             i                   = 0;
+    jsmn_parser     p;
+    jsmntok_t       t[TOKEN_MAX];
 
-    return GEKKO_OK;
+    if (!name) return GEKKO_ERROR;
+    if (!grip) return GEKKO_ERROR;
+    if (!grips_dir) return GEKKO_ERROR;
+
+    dir = opendir(grips_dir);
+    if (!dir) {
+        fprintf(stderr, "Cannot open directory: %s.\n", grips_dir);
+        return GEKKO_ERROR;
+    }
+
+    snprintf(filename, NAME_MAX, "%s.json", name);
+
+    while ((ent = readdir(dir))) {
+        if (ent->d_type != DT_REG) continue;
+        if (strcmp(filename, ent->d_name) != GEKKO_OK) continue;
+
+        grip_path = (char *)zalloc(PATH_MAX);
+        if (!grip_path) {
+            fprintf(stderr, "Insufficient memory.\n");
+            closedir(dir);
+            return GEKKO_ERROR;
+        }
+        memset(grip_path, 0, PATH_MAX);
+
+        snprintf(grip_path, PATH_MAX, "%s%s%s", grips_dir, SEP, ent->d_name);
+        printf("grip_path: [%s]\n", grip_path);
+        break;
+    }
+
+    closedir(dir);
+
+    if (!grip_path) {
+        fprintf(stderr, "Grip \"%s\" cannot be found.\n", name);
+        return GEKKO_ERROR;
+    }
+
+    file = fopen(grip_path, "r");
+    if (!file) {
+        fprintf(stderr, "Cannot open file %s.\n", grip_path);
+        error = true;
+        goto __error_grip_open;
+    }
+
+    fseek(file, 0, SEEK_END);
+    file_length = ftell(file);
+    fseek(file, 0, SEEK_SET);
+
+    json = (char *)zalloc(file_length);
+    if (!json) {
+        fprintf(stderr, "Insufficient memory.\n");
+        error = true;
+        goto __error_json_malloc;
+    }
+
+    file_read = fread(json, 1, file_length, file);
+
+    if (file_read != file_length) {
+        fprintf(stderr, "Failed to parse JSON %s (%d).\n", grip_path, count);
+        error = true;
+        goto __error_grip_read;
+    }
+
+    jsmn_init(&p);
+    count = jsmn_parse(&p, json, strlen(json), t, sizeof(t) / sizeof(t[0]));
+    if (count < 0) {
+        fprintf(stderr, "Failed to parse JSON %s (%d).\n", grip_path, count);
+        error = true;
+        goto __error_grip_read;
+    }
+
+    if (count < 1 || t[0].type != JSMN_OBJECT) {
+        fprintf(stderr, "Invalid json file %s (%d).\n", grip_path, count);
+        error = true;
+        goto __error_grip_read;
+    }
+
+    for (i = 1; i < count; i++) {
+        if (jsoneq(json, &t[i], "debug") == GEKKO_OK) {
+            value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
+            printf("debug = %s\n", value);
+            i++;
+
+        } else if (jsoneq(json, &t[i], "grip_directory") == GEKKO_OK) {
+            value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
+            printf("grip_directory = %s\n", value);
+            i++;
+        }
+    }
+
+    free(value);
+
+__error_grip_read:
+    free(json);
+
+__error_json_malloc:
+    fclose(file);
+
+__error_grip_open:
+    free(grip_path);
+
+    return (error) ? GEKKO_ERROR : GEKKO_OK;
 }
 /**********************************************************************************************************************
     description:    Print general help
@@ -380,6 +520,8 @@ int main(int argc, char *argv[])
     snprintf(config, PATH_MAX, "%s%s", getenv("HOME"), GEKKO_DEFAULT_CONFIG);
 #endif
 
+    if (argc > 1) gko_help_main();
+
     printf("Use default configuration file: %s\n", config);
 
     if (!gko_file_exists(config)) {
@@ -393,8 +535,7 @@ int main(int argc, char *argv[])
         return GEKKO_ERROR;
     }
 
-    grip = (GRIP *)malloc(sizeof(GRIP));
-    memset(grip, 0, sizeof(GRIP));
+    grip = (GRIP *)zalloc(sizeof(GRIP));
     if (!grip) {
         fprintf(stderr, "Insufficient memory.\n");
         error = GEKKO_ERROR;
@@ -420,7 +561,8 @@ __error_read_grip:
     free(grip);
 
 __error_malloc:
-    free(grips_path);
+    free(grips_dir);
+    grips_dir = NULL;
 
     if (error) {
         return GEKKO_ERROR;

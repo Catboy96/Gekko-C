@@ -12,6 +12,9 @@
 #ifndef PATH_MAX
 #define PATH_MAX                        (512)
 #endif
+#ifndef NAME_MAX
+#define NAME_MAX                        (255)
+#endif
 #ifndef TOKEN_MAX
 #define TOKEN_MAX                       (32)
 #endif
@@ -44,12 +47,12 @@ typedef enum {
     gekko grip type
 **********************************************************************************************************************/
 typedef struct {
-    char           *host;
+    char            host[NAME_MAX];
     uint16_t        port;
     AUTH_METHOD     auth;
-    char           *user;
-    char           *pass;
-    char           *key;
+    char            user[NAME_MAX];
+    char            pass[NAME_MAX];
+    char            key[PATH_MAX];
 } GRIP;
 
 #endif  // __GEKKO_H
