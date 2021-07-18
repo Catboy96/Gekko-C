@@ -19,15 +19,22 @@ if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     find_path(LIBSSH2_INC libssh2.h)
     find_library(LIBSSH2_LIB NAMES libssh2)
 
-elseif(${CMAKE_SYSTEM_NAME} MATCHES "Windows")
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Windows")
     add_definitions(-D WINDOWS)
     message(STATUS      "OS: " ${CMAKE_SYSTEM_NAME})
 
     set(LIBSSH2_INC ${CMAKE_CURRENT_SOURCE_DIR}/platform/windows/libssh2/include)
     set(LIBSSH2_LIB ${CMAKE_CURRENT_SOURCE_DIR}/platform/windows/libssh2/bin/libssh2.dll)
 
+elseif (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+    add_definitions(-D LINUX)
+    message(STATUS      "OS: " ${CMAKE_SYSTEM_NAME})
+
+    find_path(LIBSSH2_INC libssh2.h)
+    find_library(LIBSSH2_LIB NAMES ssh2)
+
 else()
-    message(FATAL_ERROR "Operating system not supported.")
+    message(FATAL_ERROR "Operating system not supported: " ${CMAKE_SYSTEM_NAME})
 endif()
 ########################################################################################################################
 #   libssh2

@@ -27,6 +27,11 @@
 #ifdef WINDOWS
 #include <winsock.h>
 #endif
+
+#ifdef LINUX
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#endif
 /**********************************************************************************************************************
     global variables
 **********************************************************************************************************************/
@@ -210,6 +215,7 @@ static int gko_read_config(const char *path)
     char           *temp            = NULL;
     FILE           *file            = NULL;
     size_t          file_length     = 0;
+    size_t          file_read       = 0;
     int             count           = 0;
     int             i               = 0;
     jsmn_parser     p;
@@ -234,8 +240,14 @@ static int gko_read_config(const char *path)
         return GEKKO_ERROR;
     }
 
-    fread(json, 1, file_length, file);
+    file_read = fread(json, 1, file_length, file);
     fclose(file);
+
+    if (file_read != file_length) {
+        fprintf(stderr, "Failed to parse JSON %s (%d).\n", path, count);
+        free(json);
+        return GEKKO_ERROR;
+    }
 
     jsmn_init(&p);
     count = jsmn_parse(&p, json, strlen(json), t, sizeof(t) / sizeof(t[0]));
