@@ -21,6 +21,10 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #endif
+
+#ifdef WINDOWS
+#include <winsock.h>
+#endif
 /**********************************************************************************************************************
     global variables
 **********************************************************************************************************************/
@@ -36,6 +40,30 @@ if (ret != GEKKO_OK) {                          \
     fprintf(stderr, prompt " (%d).\n", ret);    \
     return GEKKO_ERROR;                         \
 }
+/**********************************************************************************************************************
+    description:    windows specific strndup implementation
+    arguments:      str:    string
+                    chars:  max string length to duplicate
+    return:         duplicate string
+**********************************************************************************************************************/
+#ifdef WINDOWS
+static char *strndup(const char *str, size_t chars)
+{
+    char   *buffer;
+    int     n;
+
+    buffer = (char *)malloc(chars + 1);
+    if (buffer) {
+        for (n = 0; ((n < chars) && (str[n] != 0)); n++) {
+            buffer[n] = str[n];
+        }
+
+        buffer[n] = 0;
+    }
+
+    return buffer;
+}
+#endif
 /**********************************************************************************************************************
     description:    Create instance
     arguments:      grip:   grip instance
@@ -179,6 +207,7 @@ static int gko_read_config(const char *path)
 
     if (count < 1 || t[0].type != JSMN_OBJECT) {
         fprintf(stderr, "Invalid json file %s (%d).\n", path, count);
+        free(json);
         return GEKKO_ERROR;
     }
 
@@ -195,6 +224,7 @@ static int gko_read_config(const char *path)
         }
     }
 
+    free(value);
     free(json);
 
     grips_path = (char *)malloc(PATH_MAX);
@@ -273,7 +303,7 @@ int main(int argc, char *argv[])
     printf("Connection closed.");
 
 __error_read_grip:
-    free (grip);
+    free(grip);
 
 __error_malloc:
     free(grips_path);
