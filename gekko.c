@@ -443,14 +443,39 @@ static int gko_read_grip(const char *name, GRIP *grip)
     }
 
     for (i = 1; i < count; i++) {
-        if (jsoneq(json, &t[i], "debug") == GEKKO_OK) {
+        if (jsoneq(json, &t[i], "host") == GEKKO_OK) {
             value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
-            printf("debug = %s\n", value);
+            printf("host = %s\n", value);
+            snprintf(grip->host, NAME_MAX, "%s", value);
             i++;
 
-        } else if (jsoneq(json, &t[i], "grip_directory") == GEKKO_OK) {
+        } else if (jsoneq(json, &t[i], "port") == GEKKO_OK) {
             value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
-            printf("grip_directory = %s\n", value);
+            printf("port = %s\n", value);
+            grip->port = (uint16_t)atoi(value);
+            i++;
+
+        } else if (jsoneq(json, &t[i], "user") == GEKKO_OK) {
+            value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
+            printf("user = %s\n", value);
+            snprintf(grip->user, NAME_MAX, "%s", value);
+            i++;
+
+        } else if (jsoneq(json, &t[i], "auth") == GEKKO_OK) {
+            value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
+            printf("auth = %s\n", value);
+
+            if (strcmp(value, "password") == GEKKO_OK) {
+                grip->auth = AUTH_METHOD_PASSWORD;
+            } else if (strcmp(value, "publickey") == GEKKO_OK) {
+                grip->auth = AUTH_METHOD_PUBLIC_KEY;
+            } else if (strcmp(value, "keyboard-interactive") == GEKKO_OK) {
+                grip->auth = AUTH_METHOD_KEYBOARD_INTERACTIVE;
+            } else {
+                fprintf(stderr, "Invalid authentication method: %s\n", value);
+                break;
+            }
+
             i++;
         }
     }
@@ -509,7 +534,7 @@ static void gko_help_main(void)
 int main(int argc, char *argv[])
 {
     int     ret                 = GEKKO_ERROR;
-    int     error               = GEKKO_OK;
+    bool    error               = false;
     char    config[PATH_MAX]    = {0};
     GRIP   *grip                = NULL;
 
@@ -538,14 +563,14 @@ int main(int argc, char *argv[])
     grip = (GRIP *)zalloc(sizeof(GRIP));
     if (!grip) {
         fprintf(stderr, "Insufficient memory.\n");
-        error = GEKKO_ERROR;
+        error = true;
         goto __error_malloc;
     }
 
     ret = gko_read_grip("aliyun", grip);
     if (ret != GEKKO_OK) {
         fprintf(stderr, "Cannot read grip (%d).\n", ret);
-        error = GEKKO_ERROR;
+        error = true;
         goto __error_read_grip;
     }
 
@@ -564,11 +589,7 @@ __error_malloc:
     free(grips_dir);
     grips_dir = NULL;
 
-    if (error) {
-        return GEKKO_ERROR;
-    } else {
-        return GEKKO_OK;
-    }
+    return (error) ? GEKKO_ERROR : GEKKO_OK;
 }
 /**********************************************************************************************************************
     end
