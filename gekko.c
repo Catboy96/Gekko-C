@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <limits.h>
+#include <dirent.h>
+#include <stdbool.h>
 
 #include "gekko.h"
 #include "jsmn.h"
@@ -53,6 +55,7 @@ static char *strndup(const char *str, size_t chars)
     int     n;
 
     buffer = (char *)malloc(chars + 1);
+    memset(buffer, 0, chars + 1);
     if (buffer) {
         for (n = 0; ((n < chars) && (str[n] != 0)); n++) {
             buffer[n] = str[n];
@@ -64,6 +67,40 @@ static char *strndup(const char *str, size_t chars)
     return buffer;
 }
 #endif
+/**********************************************************************************************************************
+    description:    Check if file exists
+    arguments:      path:   file path
+    return:         boolean
+**********************************************************************************************************************/
+static bool gko_file_exists(const char *path)
+{
+    if (!path) return false;
+
+    return (access(path, F_OK) == GEKKO_OK) ? true : false;
+}
+/**********************************************************************************************************************
+    description:    Check if directory exists
+    arguments:      path:   directory path
+    return:         boolean
+**********************************************************************************************************************/
+static bool gko_dir_exists(const char *path)
+{
+    DIR *dir;
+
+    if (!path) return false;
+
+    if (access(path, F_OK) != -1) {
+        if ((dir = opendir(path)) != NULL) {
+            closedir(dir);
+        } else {
+            return false;
+        }
+    } else {
+        return false;
+    }
+
+    return true;
+}
 /**********************************************************************************************************************
     description:    Create instance
     arguments:      grip:   grip instance
@@ -170,6 +207,7 @@ static int gko_read_config(const char *path)
 {
     char           *json            = NULL;
     char           *value           = NULL;
+    char           *temp            = NULL;
     FILE           *file            = NULL;
     size_t          file_length     = 0;
     int             count           = 0;
@@ -190,6 +228,7 @@ static int gko_read_config(const char *path)
     fseek(file, 0, SEEK_SET);
 
     json = (char *)malloc(file_length);
+    memset(json, 0, file_length);
     if (!json) {
         fprintf(stderr, "Insufficient memory.\n");
         return GEKKO_ERROR;
@@ -220,6 +259,31 @@ static int gko_read_config(const char *path)
         } else if (jsoneq(json, &t[i], "grip_directory") == GEKKO_OK) {
             value = strndup(json + t[i + 1].start, t[i + 1].end - t[i + 1].start);
             printf("grip_directory = %s\n", value);
+
+            temp = value;
+            while (*temp++ != '\0') {
+#ifdef WINDOWS
+                if (*temp == '/') *temp = '\\';
+#else
+                if (*temp == '\\') *temp = '/';
+#endif
+            }
+
+            grips_path = (char *)malloc(PATH_MAX);
+            if (!grips_path) {
+                fprintf(stderr, "Insufficient memory.\n");
+                return GEKKO_ERROR;
+            }
+
+            if (value[0] == '~') {
+#ifdef WINDOWS
+                snprintf(grips_path, PATH_MAX, "%s%s%s", getenv("HOMEDRIVE"),
+                         getenv("HOMEPATH"), &value[1]);
+#else
+                snprintf(grips_path, PATH_MAX, "%s%s", getenv("HOME"), &value[1]);
+#endif
+            }
+
             i++;
         }
     }
@@ -227,9 +291,14 @@ static int gko_read_config(const char *path)
     free(value);
     free(json);
 
-    grips_path = (char *)malloc(PATH_MAX);
     if (!grips_path) {
-        fprintf(stderr, "Insufficient memory.\n");
+        fprintf(stderr, "Grips directory is not specified.\n");
+        return GEKKO_ERROR;
+    }
+
+    if (!gko_dir_exists(grips_path)) {
+        free(grips_path);
+        fprintf(stderr, "Grips directory does not exist.\n");
         return GEKKO_ERROR;
     }
 
@@ -261,26 +330,27 @@ int main(int argc, char *argv[])
     GRIP   *grip                = NULL;
 
 #ifdef WINDOWS
-    snprintf(config, PATH_MAX, "%s%s%s", getenv("HOMEDRIVE"), getenv("HOMEPATH"), GEKKO_DEFAULT_CONFIG);
+    snprintf(config, PATH_MAX, "%s%s%s", getenv("HOMEDRIVE"),
+             getenv("HOMEPATH"), GEKKO_DEFAULT_CONFIG);
 #else
     snprintf(config, PATH_MAX, "%s%s", getenv("HOME"), GEKKO_DEFAULT_CONFIG);
 #endif
 
     printf("Use default configuration file: %s\n", config);
 
-    ret = access(config, F_OK);
-    if (ret != GEKKO_OK) {
+    if (!gko_file_exists(config)) {
         fprintf(stderr, "Cannot access file (%d).\n", ret);
         return GEKKO_ERROR;
     }
 
-    ret = gko_read_config(config);  // TODO: free grips_path in function
+    ret = gko_read_config(config);
     if (ret != GEKKO_OK) {
         fprintf(stderr, "Cannot read configuration file (%d).\n", ret);
         return GEKKO_ERROR;
     }
 
     grip = (GRIP *)malloc(sizeof(GRIP));
+    memset(grip, 0, sizeof(GRIP));
     if (!grip) {
         fprintf(stderr, "Insufficient memory.\n");
         error = GEKKO_ERROR;
