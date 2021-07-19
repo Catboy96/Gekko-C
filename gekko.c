@@ -379,7 +379,9 @@ static int gko_read_grip(const char *name, GRIP *grip)
     snprintf(filename, NAME_MAX, "%s.json", name);
 
     while ((ent = readdir(dir))) {
+#ifndef WINDOWS
         if (ent->d_type != DT_REG) continue;
+#endif
         if (strcmp(filename, ent->d_name) != GEKKO_OK) continue;
 
         grip_path = (char *)zalloc(PATH_MAX);
