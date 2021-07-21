@@ -528,6 +528,31 @@ static void gko_help_main(void)
     printf("\tgekko run -s myserver [-p password] [-k keyfile]\n\n");
 }
 /**********************************************************************************************************************
+    description:    Print camo help
+    arguments:      -
+    return:         -
+**********************************************************************************************************************/
+static void gko_help_camo(void)
+{
+    printf("Usage: gekko camo [-r] path\n\n");
+    printf("Arguments:\n");
+    printf("\tpath\t\tadd file or directory to ignore\n");
+    printf("\t-r\t\tremove path to ignore instead of adding\n");
+}
+/**********************************************************************************************************************
+    description:    Entry function of Gekko camouflage
+    arguments:      argc:   Count of command line arguments
+                    argv:   Values of command line arguments
+    return:         error code
+**********************************************************************************************************************/
+static int gko_camo(int argc, char *argv[])
+{
+    if (argc < 2) {
+        gko_help_camo();
+        return GEKKO_OK;
+    }
+}
+/**********************************************************************************************************************
     description:    Entry function of Gekko
     arguments:      argc:   Count of command line arguments
                     argv:   Values of command line arguments
@@ -547,7 +572,23 @@ int main(int argc, char *argv[])
     snprintf(config, PATH_MAX, "%s%s", getenv("HOME"), GEKKO_DEFAULT_CONFIG);
 #endif
 
-    if (argc > 1) gko_help_main();
+    if (argc < 2) {
+        gko_help_main();
+        return GEKKO_OK;
+
+    } else {
+        if (strcmp(argv[1], "camo") == GEKKO_OK) {
+            return gko_camo(argc - 1, &argv[1]);
+
+        } else if (strcmp(argv[1], "grip") == GEKKO_OK) {
+
+        } else if (strcmp(argv[1], "run") == GEKKO_OK) {
+
+        } else {
+            printf("Invalid command: %s\n", argv[1]);
+            return GEKKO_ERROR;
+        }
+    }
 
     printf("Use default configuration file: %s\n", config);
 
