@@ -507,7 +507,7 @@ static void gko_help_main(void)
     printf("Commands:\n");
     printf("\tcamo\t\tspecify file or directory to ignore\n");
     printf("\tgrip\t\tadd a grip to remote host\n");
-    printf("\trun\t\tstart synchronization\n\n");
+    printf("\trun\t\t\tstart synchronization\n\n");
 
     printf("Common usage:\n");
     printf("- Add path to ignore:\n");
@@ -540,6 +540,33 @@ static void gko_help_camo(void)
     printf("\t-r\t\tremove path to ignore instead of adding\n");
 }
 /**********************************************************************************************************************
+    description:    Print grip help
+    arguments:      -
+    return:         -
+**********************************************************************************************************************/
+static void gko_help_grip(void)
+{
+    printf("Usage: gekko grip [-r] remark connection\n\n");
+    printf("Arguments:\n");
+    printf("\tremark\t\tremark for the remote connection\n");
+    printf("\tconnection\tconnection string, i.e. sftp://catboy@myserver.com:22\n");
+    printf("\t-r\t\tremove instead of add/modify\n");
+}
+/**********************************************************************************************************************
+    description:    Print run help
+    arguments:      -
+    return:         -
+**********************************************************************************************************************/
+static void gko_help_run(void)
+{
+    printf("Usage: gekko run [-p password] [-k keyfile] remark path\n\n");
+    printf("Arguments:\n");
+    printf("\tremark\t\tremark for the remote connection\n");
+    printf("\tpath\t\tremote path to sync with\n");
+    printf("\t-p password\tspecify password for remote connection\n");
+    printf("\t-k keyfile\tspecify SSH key file for SFTP connection\n");
+}
+/**********************************************************************************************************************
     description:    Entry function of Gekko camouflage
     arguments:      argc:   Count of command line arguments
                     argv:   Values of command line arguments
@@ -549,6 +576,32 @@ static int gko_camo(int argc, char *argv[])
 {
     if (argc < 2) {
         gko_help_camo();
+        return GEKKO_OK;
+    }
+}
+/**********************************************************************************************************************
+    description:    Entry function of Gekko grip
+    arguments:      argc:   Count of command line arguments
+                    argv:   Values of command line arguments
+    return:         error code
+**********************************************************************************************************************/
+static int gko_grip(int argc, char *argv[])
+{
+    if (argc < 2) {
+        gko_help_grip();
+        return GEKKO_OK;
+    }
+}
+/**********************************************************************************************************************
+    description:    Entry function of Gekko run
+    arguments:      argc:   Count of command line arguments
+                    argv:   Values of command line arguments
+    return:         error code
+**********************************************************************************************************************/
+static int gko_run(int argc, char *argv[])
+{
+    if (argc < 2) {
+        gko_help_run();
         return GEKKO_OK;
     }
 }
@@ -581,8 +634,10 @@ int main(int argc, char *argv[])
             return gko_camo(argc - 1, &argv[1]);
 
         } else if (strcmp(argv[1], "grip") == GEKKO_OK) {
+            return gko_grip(argc - 1, &argv[1]);
 
         } else if (strcmp(argv[1], "run") == GEKKO_OK) {
+            return gko_run(argc - 1, &argv[1]);
 
         } else {
             printf("Invalid command: %s\n", argv[1]);
