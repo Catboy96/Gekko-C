@@ -574,10 +574,48 @@ static void gko_help_run(void)
 **********************************************************************************************************************/
 static int gko_camo(int argc, char *argv[])
 {
+    char    opt             = 0;
+    bool    is_remove       = false;
+    int     i               = 0;
+    FILE   *file            = NULL;
+    char    line[PATH_MAX]  = {0};
+    char    ign[PATH_MAX]   = {0};
+
     if (argc < 2) {
         gko_help_camo();
         return GEKKO_OK;
     }
+
+    while ((opt = getopt(argc, argv, "r")) != -1) {
+        if (opt == 'r') {
+            is_remove = true;
+        }
+    }
+
+    if (!getcwd(ign, sizeof(ign))) {
+        fprintf(stderr, "Failed to get current directory.\n");
+        return GEKKO_ERROR;
+    }
+    strcat(ign, SEP ".gkoignore"); // todo: dangerous
+
+    if (!gko_file_exists(ign)) {
+        file = fopen(ign, "wb+");
+    } else {
+        file = fopen(ign, "rb+");
+    }
+
+    if (!file) {
+        fprintf(stderr, "Cannot open %s.\n", ign);
+        return GEKKO_ERROR;
+    }
+
+    for (i = optind; i < argc; i++) {
+        printf("non-opt arg: %s\n", argv[i]);
+    }
+
+
+
+    return GEKKO_OK;
 }
 /**********************************************************************************************************************
     description:    Entry function of Gekko grip
@@ -591,6 +629,8 @@ static int gko_grip(int argc, char *argv[])
         gko_help_grip();
         return GEKKO_OK;
     }
+
+    return GEKKO_OK;
 }
 /**********************************************************************************************************************
     description:    Entry function of Gekko run
@@ -604,6 +644,8 @@ static int gko_run(int argc, char *argv[])
         gko_help_run();
         return GEKKO_OK;
     }
+
+    return GEKKO_OK;
 }
 /**********************************************************************************************************************
     description:    Entry function of Gekko
